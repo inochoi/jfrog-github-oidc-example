@@ -35,7 +35,7 @@ jobs:
               subject_token = $ID_TOKEN
               provider_name = "jfrog-github-oidc-example"
           } | ConvertTo-Json -Depth 10 -Compress
-          $response = Invoke-RestMethod -Uri "https://mill.jfrog.team:12264/access/api/v1/oidc/token" -Headers $headers -Body $body -Method POST
+          $response = Invoke-RestMethod -Uri "https://trial6nui49.jfrog.io/access/api/v1/oidc/token" -Headers $headers -Body $body -Method POST
           $ACCESS_TOKEN = $response.access_token
           echo "ACCESS_TOKEN=$ACCESS_TOKEN" >> $env:GITHUB_ENV
         shell: pwsh
@@ -46,7 +46,7 @@ jobs:
         run: |
           # Create a file
           $filePath = "oidc-poc.txt"
-          $artifactUri = "https://mill.jfrog.team:12264/artifactory/general-local/oidc-poc-$(Get-Date -Format 'yyyyMMddHHmmss')"
+          $artifactUri = "https://trial6nui49.jfrog.io/artifactory/general-local/oidc-poc-$(Get-Date -Format 'yyyyMMddHHmmss')"
           Set-Content -Path $filePath -Value "TEST"
           
           # Upload the file
