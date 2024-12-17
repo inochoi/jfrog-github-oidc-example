@@ -1,44 +1,27 @@
 name: oidc-poc
 on:
-  push:
-    branches:
-      - '*'
+    push:
+        branches:
+            - '*'
 jobs:
-  auth:
-    permissions:
-      contents: read
-      id-token: write
-
-    runs-on: windows-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v2
-
-      - name: Set ID Token and Exchange for Access Token
-        run: |
-          # Step 1: Get ID Token
-          $headers = @{
-              "User-Agent" = "actions/oidc-client"
-              "Authorization" = "Bearer $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN"
-          }
-          $response = Invoke-RestMethod -Uri "$env:ACTIONS_ID_TOKEN_REQUEST_URL&audience=jfrog-github" -Headers $headers -Method GET
-          $ID_TOKEN = $response.value
-          echo "ID_TOKEN=$ID_TOKEN" >> $env:GITHUB_ENV
-          
-          # Step 2: Exchange ID Token for Access Token
-          $headers = @{
-              "Content-Type" = "application/json"
-          }
-          $body = @{
-              grant_type = "urn:ietf:params:oauth:grant-type:token-exchange"
-              subject_token_type = "urn:ietf:params:oauth:token-type:id_token"
-              subject_token = $ID_TOKEN
-              provider_name = "jfrog-github-oidc-example"
-          } | ConvertTo-Json -Depth 10 -Compress
-          $response = Invoke-RestMethod -Uri "https://trial6nui49.jfrog.io/access/api/v1/oidc/token" -Headers $headers -Body $body -Method POST
-          $ACCESS_TOKEN = $response.access_token
-          echo "ACCESS_TOKEN=$ACCESS_TOKEN" >> $env:GITHUB_ENV
-        shell: pwsh
+    auth:
+        permissions:
+            contents: read
+            id-token: write
+        runs-on: ubuntu-latest
+        steps:
+            - name: Get id token
+                run: |
+                    ID_TOKEN=$(curl -sLS -H "User-Agent: actions/oidc-client" -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+                    "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=jfrog-github" | jq .value | tr -d '"')
+                    echo "ID_TOKEN=${ID_TOKEN}" >> $GITHUB_ENV
+            - name: Exchange token with access
+                env:
+                    ID_TOKEN: ${{env.ID_TOKEN}}
+                    JFROG_PLATFORM_URL: https://trial6nui49.jfrog.io
+                run: |
+                    ACCESS_TOKEN=$(curl -XPOST -H "Content-Type: application/json" "https://trial6nui49.jfrog.io/access/api/v1/oidc/token" -d "{\"grant_type\": \"urn:ietf:params:oauth:grant-type:token-exchange\", \"subject_token_type\":\"urn:ietf:params:oauth:token-type:id_token\", \"subject_token\": \"${ID_TOKEN}\", \"provider_name\": \"jfrog-github-oidc-example\"}" | jq .access_token | tr -d '"')
+                    echo "ACCESS_TOKEN=${ACCESS_TOKEN}" >> $GITHUB_ENV
 
       - name: Deploy Artifact to Artifactory
         env:
