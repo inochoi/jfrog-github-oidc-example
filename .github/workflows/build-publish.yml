@@ -1,53 +1,58 @@
-name: "JFrog-GitHub NPM Publish OIDC Integration"
-on: push
-
-# This is required as per
-# https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-cloud-providers#adding-permissions-settings
-permissions:
-  id-token: write
-
+name: oidc-poc
+on:
+  push:
+    branches:
+      - '*'
 jobs:
-  build:
-     runs-on: ubuntu-latest
-     env:
-      OIDC_AUDIENCE: 'jfrog-github'
-      OIDC_PROVIDER: 'jfrog-github-oidc-example'
-      PLATFORM_REPO: 'test-npm'
-     defaults:
-      run:
-        working-directory: ./package
-     steps:
-       - name: Checkout
-         uses: actions/checkout@v3
-              
-       - name: Setup Node npm
-         uses: actions/setup-node@v3
-   
-       - name: Setup JFrog CLI
-         uses: jfrog/setup-jfrog-cli@v3
-         env:  
-           JF_URL: https://mill.jfrog.team:12264
-         with:
-           oidc-provider-name: ${{ env.OIDC_PROVIDER }}
-           oidc-audience: ${{ env.OIDC_AUDIENCE }}
+  auth:
+    permissions:
+      contents: read
+      id-token: write
 
-       - name: Set CLI Config
-         run: jf npm-config --global=true --repo-resolve=$PLATFORM_REPO --repo-deploy=$PLATFORM_REPO
-           
-       - name: Install Dependencies
-         run: jf npm install
-           
-       - name: Run tests
-         run: npm test
-         
-       - name: Publish
-         run: jf npm publish
-         
-       - name: Publish Build info With JFrog CLI
-         run: |
-          # Collect environment variables for the build
-          jf rt build-collect-env
-          # Collect VCS details from git and add them to the build
-          jf rt build-add-git
-          # Publish build info
-          jf rt build-publish
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+
+      - name: Set ID Token and Exchange for Access Token
+        run: |
+          # Step 1: Get ID Token
+          $headers = @{
+              "User-Agent" = "actions/oidc-client"
+              "Authorization" = "Bearer $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+          }
+          $response = Invoke-RestMethod -Uri "$env:ACTIONS_ID_TOKEN_REQUEST_URL&audience=jfrog-github" -Headers $headers -Method GET
+          $ID_TOKEN = $response.value
+          echo "ID_TOKEN=$ID_TOKEN" >> $env:GITHUB_ENV
+          
+          # Step 2: Exchange ID Token for Access Token
+          $headers = @{
+              "Content-Type" = "application/json"
+          }
+          $body = @{
+              grant_type = "urn:ietf:params:oauth:grant-type:token-exchange"
+              subject_token_type = "urn:ietf:params:oauth:token-type:id_token"
+              subject_token = $ID_TOKEN
+              provider_name = "jfrog-github-oidc-example"
+          } | ConvertTo-Json -Depth 10 -Compress
+          $response = Invoke-RestMethod -Uri "https://mill.jfrog.team:12264/access/api/v1/oidc/token" -Headers $headers -Body $body -Method POST
+          $ACCESS_TOKEN = $response.access_token
+          echo "ACCESS_TOKEN=$ACCESS_TOKEN" >> $env:GITHUB_ENV
+        shell: pwsh
+
+      - name: Deploy Artifact to Artifactory
+        env:
+          ACCESS_TOKEN: ${{ env.ACCESS_TOKEN }}
+        run: |
+          # Create a file
+          $filePath = "oidc-poc.txt"
+          $artifactUri = "https://mill.jfrog.team:12264/artifactory/general-local/oidc-poc-$(Get-Date -Format 'yyyyMMddHHmmss')"
+          Set-Content -Path $filePath -Value "TEST"
+          
+          # Upload the file
+          $headers = @{
+              "Authorization" = "Bearer $env:ACCESS_TOKEN"
+          }
+          Invoke-RestMethod -Uri $artifactUri -Headers $headers -InFile $filePath -Method PUT
+          Write-Output "File successfully uploaded to Artifactory: $artifactUri"
+        shell: pwsh
