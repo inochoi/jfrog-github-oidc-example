@@ -11,7 +11,7 @@ jobs:
      runs-on: ubuntu-latest
      env:
       OIDC_AUDIENCE: 'jfrog-github'
-      OIDC_PROVIDER: 'github'
+      OIDC_PROVIDER: 'jfrog-github-oidc-example'
       PLATFORM_REPO: 'test-npm'
      defaults:
       run:
@@ -24,9 +24,9 @@ jobs:
          uses: actions/setup-node@v3
    
        - name: Setup JFrog CLI
-         uses: jfrog/setup-jfrog-cli@v3
+         uses: jfrog/setup-jfrog-cli@v4
          env:  
-           JF_URL: ${{ secrets.JF_URL }}
+           JF_URL: https://mill.jfrog.team:12264
          with:
            oidc-provider-name: ${{ env.OIDC_PROVIDER }}
            oidc-audience: ${{ env.OIDC_AUDIENCE }}
